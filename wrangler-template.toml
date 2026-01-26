@@ -1,0 +1,19 @@
+name = "dage-rack-cfpages"
+compatibility_date = "2025-11-07"
+
+account_id = "YourCloudflareAccountID"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "d1 database name"
+database_id = "d1 database id"
+
+[vars]
+DA_WRITE_TOKEN = "Demo111+"
+DA_LOGSERVICEURL = "https://demo2.dglog.workers.dev/api"
+DA_LOGSERVICETOKEN = "Demo111+"
+DA_SERVICEID = "dacds"
+DA_INSTANCEID = "dev1"
+
+[observability]
+enabled = true
