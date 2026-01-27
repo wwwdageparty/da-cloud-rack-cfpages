@@ -9,7 +9,7 @@ export async function onRequest({ env }: { env: any }) {
       {
         service: C_SERVICE,
         version: C_VERSION,
-        instance: env.INSTANCEID || G_INSTANCE,
+        instance: env.DA_INSTANCEID || G_INSTANCE,
       },
       null,
       2
