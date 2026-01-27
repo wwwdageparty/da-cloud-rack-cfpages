@@ -1,7 +1,6 @@
 name = "dage-rack-cfpages"
-compatibility_date = "2025-11-07"
-
-account_id = "YourCloudflareAccountID"
+compatibility_date = "2024-04-01"
+pages_build_output_dir = "./dist"
 
 [[d1_databases]]
 binding = "DB"
