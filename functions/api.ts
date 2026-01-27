@@ -248,28 +248,77 @@ async function handleApiRequest(action: string, payload: any, db: any, waitUntil
 }
 
 // ================== HTTP Wrapper ==================
-async function handleApi(request: Request, env: any, waitUntilFn: any) {
-  const auth = request.headers.get("Authorization");
-  if (!auth || !auth.startsWith("Bearer ")) return nack("unknown", "UNAUTHORIZED", "Missing Authorization");
+// async function handleApi(request: Request, env: any, waitUntilFn: any) {
+//   const auth = request.headers.get("Authorization");
+//   if (!auth || !auth.startsWith("Bearer ")) return nack("unknown", "UNAUTHORIZED", "Missing Authorization");
 
-  if (auth.split(" ")[1] !== env.DA_WRITE_TOKEN) return nack("unknown", "INVALID_TOKEN", "Token failed");
+//   if (auth.split(" ")[1] !== env.DA_WRITE_TOKEN) return nack("unknown", "INVALID_TOKEN", "Token failed");
+
+//   let body: any;
+//   try { body = await request.json(); } catch { return nack("unknown", "INVALID_JSON", "Malformed JSON"); }
+//   const requestId = body.request_id || "unknown";
+//   if (!body.payload) return nack(requestId, "INVALID_FIELD", "Missing payload");
+
+//   const ret = await handleApiRequest(body.action || "", body.payload, env.DB, waitUntilFn);
+//   if (ret && ret.error) return nack(requestId, "REQUEST_FAILED", ret.error);
+
+//   return ack(requestId, ret || {});
+// }
+async function handleApi(request: Request, env: any, waitUntilFn: any) {
+  const instanceId = env.DA_INSTANCEID || G_INSTANCE;
+  const sourceId = `${C_SERVICE}/${instanceId}`;
+
+  const auth = request.headers.get("Authorization");
+  if (!auth || !auth.startsWith("Bearer ")) {
+    return nack("unknown", sourceId, "UNAUTHORIZED", "Missing Authorization");
+  }
+
+  if (auth.split(" ")[1] !== env.DA_WRITE_TOKEN) {
+    return nack("unknown", sourceId, "INVALID_TOKEN", "Token failed");
+  }
 
   let body: any;
-  try { body = await request.json(); } catch { return nack("unknown", "INVALID_JSON", "Malformed JSON"); }
+  try { 
+    body = await request.json(); 
+  } catch { 
+    return nack("unknown", sourceId, "INVALID_JSON", "Malformed JSON"); 
+  }
+
   const requestId = body.request_id || "unknown";
-  if (!body.payload) return nack(requestId, "INVALID_FIELD", "Missing payload");
+  if (!body.payload) {
+    return nack(requestId, sourceId, "INVALID_FIELD", "Missing payload");
+  }
 
   const ret = await handleApiRequest(body.action || "", body.payload, env.DB, waitUntilFn);
-  if (ret && ret.error) return nack(requestId, "REQUEST_FAILED", ret.error);
+  
+  if (ret && ret.error) {
+    return nack(requestId, sourceId, "REQUEST_FAILED", ret.error);
+  }
 
-  return ack(requestId, ret || {});
+  return ack(requestId, sourceId, ret || {});
 }
 
 // ================== HELPERS ==================
-function ack(requestId: string, payload: any = {}) { return jsonResponse({ type: "ack", request_id: requestId, payload }); }
-function nack(requestId: string, code: string, message: string) { return jsonResponse({ type: "nack", request_id: requestId, payload: { status: "error", code, message } }, 400); }
-function jsonResponse(obj: any, status = 200) { return new Response(JSON.stringify(obj, null, 2), { status, headers: { "Content-Type": "application/json" } }); }
 async function errDelegate(msg: string, waitUntilFn: any) { console.error(msg); waitUntilFn(Promise.resolve()); }
+function ack(requestId: string, sourceId: string, payload: any = {}) { 
+  return jsonResponse({ type: "ack", request_id: requestId, source_id: sourceId, payload }); 
+}
+
+function nack(requestId: string, sourceId: string, code: string, message: string) { 
+  return jsonResponse({ 
+    type: "nack", 
+    request_id: requestId, 
+    source_id: sourceId,
+    payload: { status: "error", code, message } 
+  }, 400); 
+}
+
+function jsonResponse(obj: any, status = 200) { 
+  return new Response(JSON.stringify(obj, null, 2), { 
+    status, 
+    headers: { "Content-Type": "application/json" } 
+  }); 
+}
 
 // ================== TABLE HELPERS ==================
 function normalizeJsonColumns(obj: any) { for (const k of ["t1","t2","t3"]) { if (obj[k] !== null && typeof obj[k] === "object") obj[k] = JSON.stringify(obj[k]); } }
