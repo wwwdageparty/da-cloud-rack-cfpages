@@ -10,6 +10,58 @@ export async function onRequest(context) {
   return await handleApi(request, env, waitUntil);
 }
 
+
+// ================== Operator ==================
+async function daCreateTable(db, tableName, c1Unique) {
+  const c1Constraint = c1Unique ? "UNIQUE" : "";
+
+  const tableSql = `
+    CREATE TABLE IF NOT EXISTS ${tableName} (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      c1 VARCHAR(255) ${c1Constraint},
+      c2 VARCHAR(255), c3 VARCHAR(255),
+      i1 INT, i2 INT, i3 INT,
+      d1 DOUBLE, d2 DOUBLE, d3 DOUBLE,
+      t1 TEXT, t2 TEXT, t3 TEXT,
+      v1 TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      v2 TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      v3 TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
+
+  const statements = [db.prepare(tableSql)];
+  
+  // Add indices based on uniqueness requirements
+  if (!c1Unique) {
+    statements.push(db.prepare(`CREATE INDEX IF NOT EXISTS idx_${tableName}_c1 ON ${tableName}(c1)`));
+  }
+  statements.push(db.prepare(`CREATE INDEX IF NOT EXISTS idx_${tableName}_v2 ON ${tableName}(v2)`));
+
+  return await db.batch(statements);
+}
+
+async function daSystemTableInit(db) {
+  const tableName = DB_DA_SYSTEM_TABLENAME;
+  const newUuid = crypto.randomUUID();
+
+  // Step 1: Create the table using the standard helper
+  await daCreateTable(db, tableName, true);
+
+  // Step 2: Insert reserved records (using OR IGNORE to prevent duplicates)
+  const versionInsert = `
+    INSERT OR IGNORE INTO ${tableName} (id, c1, c2, i1, d1)
+    VALUES (1, '___basic_db_version', ?, ?, ?);
+  `;
+  const systemReserveInsert = `
+    INSERT OR IGNORE INTO ${tableName} (id, c1) VALUES (100, '___systemReserve');
+  `;
+
+  return await db.batch([
+    db.prepare(versionInsert).bind(newUuid, DB_VERSION, DB_VERSION),
+    db.prepare(systemReserveInsert)
+  ]);
+}
+
 // ================== Core API ==================
 async function handleApiRequest(action: string, payload: any, db: any, waitUntilFn: any) {
   const tableName = resolveTableName(payload);
@@ -20,6 +72,11 @@ async function handleApiRequest(action: string, payload: any, db: any, waitUntil
 
   try {
     switch (action) {
+      // ---------- INIT ----------
+      case "init_system": {
+        const results = await daSystemTableInit(db);
+        return { success: true, message: "System table and reserved records initialized." };
+      }
       // ---------- EXEC ----------
       case "exec": {
         const { query, params } = payload;
@@ -42,30 +99,10 @@ async function handleApiRequest(action: string, payload: any, db: any, waitUntil
       }
 
       // ---------- CREATE TABLE ----------
-      case "create_table": {
+     case "create_table": {
         const c1Unique = !!payload.c1_unique;
-        const c1Constraint = c1Unique ? "UNIQUE" : "";
-
-        const tableSql = `
-          CREATE TABLE IF NOT EXISTS ${tableName} (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            c1 VARCHAR(255) ${c1Constraint},
-            c2 VARCHAR(255), c3 VARCHAR(255),
-            i1 INT, i2 INT, i3 INT,
-            d1 DOUBLE, d2 DOUBLE, d3 DOUBLE,
-            t1 TEXT, t2 TEXT, t3 TEXT,
-            v1 TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            v2 TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            v3 TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-          );
-        `;
-
-        const statements = [db.prepare(tableSql)];
-        if (!c1Unique) statements.push(db.prepare(`CREATE INDEX IF NOT EXISTS idx_${tableName}_c1 ON ${tableName}(c1)`));
-        statements.push(db.prepare(`CREATE INDEX IF NOT EXISTS idx_${tableName}_v2 ON ${tableName}(v2)`));
-
-        await db.batch(statements);
-        return { message: `Table ${tableName} ready with indices on ${c1Unique ? 'v2' : 'c1, v2'}` };
+        await daCreateTable(db, tableName, c1Unique);
+        return { message: `Table ${tableName} ready.` };
       }
 
       // ---------- LIST TABLES ----------
@@ -328,6 +365,7 @@ function resolveTableName(payload: any) { if (!payload.table_name?.trim()) retur
 // ================== GLOBALS ==================
 const allowedColumns = ["id","c1","c2","c3","i1","i2","i3","d1","d2","d3","t1","t2","t3","v1","v2","v3"];
 const allowedQueryOptions = ["minId","offset","order","orderby","limit","table_name"];
+const DB_DA_SYSTEM_TABLENAME = "__DA_SYSTEM_CONFIG";
 const C_SERVICE = "da-cloud-cfd1-rack";
 const C_VERSION = "0.0.1";
 let G_INSTANCE = "default";
