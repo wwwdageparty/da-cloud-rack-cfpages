@@ -1,7 +1,6 @@
 // ================== Cloudflare Pages Function ==================
 export async function onRequest(context) {
   const { request, env, waitUntil } = context;
-  const url = new URL(request.url);
 
   if (request.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405 });
@@ -57,25 +56,40 @@ async function daSystemTableInit(db) {
   `;
 
   return await db.batch([
-    db.prepare(versionInsert).bind(newUuid, DB_VERSION, DB_VERSION),
+    db.prepare(versionInsert).bind(newUuid, C_VERSION, C_VERSION),
     db.prepare(systemReserveInsert)
   ]);
 }
 
 // ================== Core API ==================
 async function handleApiRequest(action: string, payload: any, db: any, waitUntilFn: any) {
-  const tableName = resolveTableName(payload);
-  if (!tableName) {
-    await errDelegate("Invalid or missing table_name", waitUntilFn);
-    return { error: "Invalid or missing table_name" };
+  const tableRequired = !["init_system","list_tables","exec"].includes(action);
+  let tableName = null;
+  
+  if (tableRequired) {
+    tableName = resolveTableName(payload);
+    if (!tableName) return { error: "Invalid or missing table_name" };
   }
 
   try {
     switch (action) {
       // ---------- INIT ----------
       case "init_system": {
-        const results = await daSystemTableInit(db);
-        return { success: true, message: "System table and reserved records initialized." };
+        try {
+          const results = await daSystemTableInit(db);
+      
+          if (!results || results.length === 0) {
+            return { error: "System initialization failed" };
+          }
+      
+          return {
+            success: true,
+            message: "System table and reserved records initialized.",
+            operations: results.length
+          };
+        } catch (err: any) {
+          return { error: `init_system failed: ${err.message}` };
+        }
       }
       // ---------- EXEC ----------
       case "exec": {
